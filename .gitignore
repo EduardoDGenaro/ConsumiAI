@@ -1,0 +1,15 @@
+node_modules/
+dist/
+data/cache/*
+!data/cache/.gitkeep
+data/evaluation/reports/
+__pycache__/
+*.pyc
+.venv/
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+.ipynb_checkpoints/
+*.log
+cache_embeddings_cdc_*.json
