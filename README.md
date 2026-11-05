@@ -8,314 +8,171 @@ pinned: false
 license: mit
 ---
 
-# Assistente RAG do Código de Defesa do Consumidor (CDC)
+# Consumer Defense Code (CDC) RAG Assistant - ConsumiAI
 
-Este repositório contém o escopo do projeto e o notebook Jupyter executável projetado para atuar como um consultor inteligente de direitos do consumidor, respondendo a dúvidas reais com base na Lei 8.078/1990 e decretos complementares (edição oficial PROCON-SP 2025).
-
----
-
-## Arquitetura de Ingestão Jurídica e Busca Híbrida Real
-
-O projeto utiliza um pipeline de processamento jurídico estruturado aliado a recuperação híbrida:
-- **Chunking Jurídico por Artigos (`PyMuPDF` / `fitz`):** Extrai o PDF corrigindo hifenizações de fim de linha, rastreia a hierarquia normativa (`TÍTULO`, `CAPÍTULO` e `SEÇÃO`) e segmenta o texto por unidade de artigo (`Art. X`), mantendo o *caput* unido aos seus parágrafos (`§`), incisos e alíneas (mesmo na virada de página) e preservando o metadado exato de página (`page` e `pages`).
-- **Busca Semântica Vetorial (`gemini-embedding-001`):** Indexa todos os chunks extraídos do PDF com embeddings normalizados (`RETRIEVAL_DOCUMENT`) e cache automático em disco (`cache_embeddings_cdc_*.json`), consultando por similaridade de cosseno (`RETRIEVAL_QUERY`).
-- **Busca Lexical Probabilística (`BM25Okapi`):** Pontua termos exatos, números de artigos (`Art. 18`, `Art. 42`, `Art. 49`) e prazos legais.
-- **Fusão de Ranking (`Reciprocal Rank Fusion - RRF`):** Unifica os resultados semânticos e lexicais com filtro de corte para recusar perguntas fora do escopo do CDC.
-- **Interpretacao Contextual:** Reformula a pergunta com o historico recente quando pertinente, corrige erros pelo contexto e pede esclarecimento quando falta informacao essencial. Uma mudanca de assunto nao deve herdar o tema anterior.
-- **Busca Ampliada e Reranking:** Consulta a pergunta original, a reformulada e ate tres buscas complementares. Recupera ate 20 candidatos por busca, combina e deduplica ate 30 trechos e usa o modelo para selecionar ate seis por relevancia juridica, incluindo regras gerais aplicaveis.
-- **Saída Estruturada com Pydantic (`RespostaJuridicaCDC`):** Utiliza JSON Schema e diferencia resposta fundamentada, esclarecimento, evidencia insuficiente e fora de escopo. Distingue regra expressa de interpretacao juridica e informa limitacoes. Confere artigos, paginas e citacao literal contra os trechos selecionados, normalizando hifenizacao do PDF sem inventar paginas substitutas.
-- **Falhas Tecnicas Separadas:** Falhas de comunicacao ou saida estruturada invalida geram `ErroConsultaCDC` e HTTP 502 na API, nao uma recusa juridica.
+This repository contains the project scope and executable application designed to act as an intelligent consumer rights consultant, answering real inquiries grounded in Brazilian Federal Law 8,078/1990 and complementary regulatory decrees (official PROCON-SP 2025 edition).
 
 ---
 
-## Arquivos do Projeto
+## Legal Ingestion Architecture and Hybrid Retrieval
+
+The project employs a structured legal document processing pipeline combined with hybrid retrieval:
+
+- **Article-Aware Legal Chunking (`PyMuPDF` / `fitz`):** Extracts text from the official PDF while repairing end-of-line hyphenation, tracking statutory hierarchy (`TITLE`, `CHAPTER`, and `SECTION`), and segmenting units by article (`Art. X`). It keeps the *caput* attached to its paragraphs (`§`), clauses, and sub-clauses (even across page transitions) while preserving accurate page metadata (`page` and `pages`).
+- **Semantic Vector Retrieval (`gemini-embedding-001` / `text-embedding-004`):** Indexes extracted document chunks using normalized embeddings (`RETRIEVAL_DOCUMENT`) with automatic disk-based caching (`cache_embeddings_cdc_*.json`), querying via cosine similarity (`RETRIEVAL_QUERY`).
+- **Probabilistic Lexical Retrieval (`BM25Okapi`):** Scores exact terms, article numbers (`Art. 18`, `Art. 42`, `Art. 49`), and legal deadlines.
+- **Ranking Fusion (`Reciprocal Rank Fusion - RRF`):** Merges semantic and lexical candidate rankings with score cutoff filters to reject questions that fall outside the scope of consumer law.
+- **Contextual Query Reformulation:** Reformulates questions using recent conversation history when relevant, resolves ambiguity, and asks for clarification when critical details are missing. Topic changes cleanly reset context without inheriting irrelevant premises.
+- **Expanded Multi-Search and LLM Reranking:** Queries the original question, the reformulated query, and up to three complementary search angles. Retrieves up to 20 candidates per query, unifies and deduplicates up to 30 candidates, and uses the model to select up to six based on legal relevance, including general governing principles.
+- **Structured Output with Pydantic (`RespostaJuridicaCDC`):** Uses JSON Schema to enforce formal response categories: grounded legal guidance, clarification requests, insufficient evidence, or out-of-scope notifications. Distinguishes express statutory rules from legal interpretations, citing exact articles, PDF pages, and literal excerpts validated against retrieved chunks.
+- **Technical Failure Isolation:** Network or schema parsing errors trigger a dedicated `ErroConsultaCDC` (yielding HTTP 502 at the API layer), preventing infrastructure glitches from being misconstrued as legal refusals.
+
+---
+
+## Project Structure
 
 ```text
 backend/
-   api.py                   API FastAPI e publicacao da interface
-   rag_engine.py            Extracao, busca, selecao e respostas do RAG
-   paths.py                 Caminhos compartilhados do projeto
-   requirements.txt         Dependencias Python
+   api.py                   FastAPI backend serving endpoints and compiled frontend
+   rag_engine.py            Document extraction, retrieval, reranking, and synthesis
+   paths.py                 Canonical project paths independent of execution directory
+   requirements.txt         Python runtime dependencies
+   security.py              Rate limiting, payload guards, and origin validations
+   telemetry.py             Local execution trace recording and latency telemetry
 frontend/
-   index.html               Entrada da aplicacao web
+   index.html               Web application HTML entry point
    src/
-      App.tsx                Chat e componentes da interface
-      main.tsx               Inicializacao do React
-      styles.css             Estilos e responsividade
+      App.tsx                Chat interface, state management, and view components
+      main.tsx               React application bootstrap
+      styles.css             Tailwind styling, design tokens, and responsive layout
       assets/brand/
-         consumiai.png        Logo otimizada usada na interface
-         original.jfif        Imagem original fornecida
-   dist/                    Build gerado por npm run build
+         consumiai.png        Optimized logo used in the application
+   dist/                    Compiled assets produced by npm run build
 data/
-   documents/               PDF oficial do CDC (PROCON-SP 2025)
-   cache/                   Cache gerado dos embeddings
-docs/images/               Referencias visuais do projeto
-legacy/streamlit_app.py    Interface anterior em Streamlit
-notebooks/                Experimentos em Jupyter e Colab
-tests/                    Testes do motor RAG e da API
+   documents/               Official CDC PDF source (PROCON-SP 2025)
+   cache/                   Generated vector embedding caches and local metrics
+docs/images/                Reference design visual specifications
+legacy/streamlit_app.py     Original Streamlit exploratory prototype
+notebooks/                  Jupyter and Google Colab experimentation notebooks
+tests/                      Test suites for the RAG engine and API endpoints
 ```
 
-A raiz mantem README, configuracoes do Vite/TypeScript, manifestos npm e
-`.env`/`.env.example`. `node_modules/`, builds e caches sao gerados e ignorados
-pelo Git. O notebook e a interface Streamlit anteriores foram preservados.
+The repository root maintains the README, Vite and TypeScript configs, package manifests, and environment templates (`.env.example`). Build artifacts and temporary caches are managed and excluded from version control.
 
 ---
 
-## Interface ConsumiAI (React + Tailwind)
+## ConsumiAI Interface (React + Tailwind)
 
-A interface principal utiliza React, TypeScript, Tailwind CSS e icones Lucide,
-conectados ao mesmo motor RAG por uma API FastAPI. Inclui historico local,
-sidebar recolhivel no celular, sugestoes clicaveis, copia das respostas,
-citacoes legais e anexos PDF/TXT como contexto do relato. O ditado depende
-do suporte e da permissao de microfone do navegador.
+The primary interface is built with React 19, TypeScript, Tailwind CSS, and Lucide icons, connected to the Python RAG engine via FastAPI. Key features include local conversation history, responsive collapsible sidebar, actionable suggestion chips, response clipboard copying, structured legal citations, and PDF/TXT attachment support as case context. Voice dictation is supported via the browser Web Speech API when available.
 
-1. Instale as dependencias Python e frontend:
-   ```powershell
-   py -3.13 -m pip install -r backend/requirements.txt
+### Local Setup and Execution
+
+1. Install Python and frontend dependencies:
+   ```bash
+   python -m pip install -r backend/requirements.txt
    npm install
    ```
-2. Configure `GEMINI_API_KEY` no arquivo `.env` da raiz. Opcionalmente,
-   configure `GEMINI_MODEL` para substituir o modelo padrao do projeto.
-   A chave permanece exclusivamente no servidor.
-3. Compile a interface e inicie a aplicacao integrada:
-   ```powershell
-   npm run build
-   py -3.13 -m uvicorn backend.api:app --host 127.0.0.1 --port 8000
-   ```
-4. Acesse **http://127.0.0.1:8000**.
 
-Em outros sistemas, substitua `py -3.13` pelo comando do seu interpretador
-Python. Para desenvolver com recarregamento automatico, mantenha a API na
-porta 8000 e execute `npm run dev` em outro terminal; o Vite encaminha
-`/api` para o servidor Python. Abra o endereco informado pelo Vite.
-
-### Arquivos da nova interface
-
-- `frontend/src/App.tsx`: componentes `Sidebar`, `ChatMessage`, `SuggestionChip`
-  e `ChatInput`, com estados de envio, erro, selecao e armazenamento.
-- `frontend/src/styles.css`: estilos responsivos e tokens visuais do ConsumiAI.
-- `frontend/src/assets/brand/`: logo fornecida, original e versao otimizada.
-- `backend/api.py`: API de consultas, leitura de anexos e publicacao de `frontend/dist`.
-- `backend/paths.py`: caminhos do PDF, do cache e do build, independentes da pasta atual.
-- `tests/test_server.py`: testes locais da API, sem chamadas pagas ao Gemini.
-
-O historico e salvo neste navegador, nao em uma conta autenticada. Excluir
-uma conversa remove seus dados locais. O anexo e enviado ao servidor e ao
-modelo como parte do relato; ele nao substitui a base normativa oficial.
-Limites: 5 MB e 12.000 caracteres extraidos; PDFs digitalizados sem texto
-precisam de OCR externo. A interface abre com uma conversa de exemplo
-identificada. O indicador de conexao verifica a presenca da chave e do PDF,
-nao a disponibilidade do provedor nem a validade da chave.
-
-O badge informa **PROCON-SP 2025**, correspondente ao PDF fornecido.
-Ele nao alega uma revisao normativa de 2026 sem um documento atualizado.
-
-### Duas Secoes de Resposta
-
-Novas respostas fundamentadas sao geradas com duas versoes na mesma chamada:
-
-- **Em palavras simples:** explicacao para quem nao conhece direito, com
-   frases curtas, palavras comuns e um proximo passo pratico. Fica aberta no chat.
-- **Analise detalhada:** fundamentos, aplicacao ao caso, condicoes, limitacoes,
-   artigos e citacoes. Fica em uma secao expansivel logo abaixo da explicacao simples.
-
-O modelo e instruido a manter as mesmas conclusoes e incertezas nas duas
-versoes, sem remover ressalvas importantes para simplificar. Esclarecimentos,
-assuntos fora do escopo e falta de evidencia continuam com uma unica mensagem
-curta. O historico antigo permanece no formato original; nao e reescrito.
-
-A API retorna `simple_content` e `detailed_content`, alem de `content` com o
-texto completo para copia e historico. A versao Streamlit tambem exibe ambas
-as secoes. Isso nao adiciona uma chamada ao Gemini, embora a geracao de duas
-versoes possa aumentar o numero de tokens de saida.
-
-### Validacao
-
-Os atalhos do chat possuem acoes especificas: `reclamacao`, `prazo` e `procon`.
-O primeiro entrega `complaint_text`, uma mensagem em primeira pessoa pronta
-para revisar, preencher e copiar, separada das orientacoes. O botao **Copiar
-reclamacao** copia apenas a carta. Nada e enviado automaticamente a empresa.
-Dados ausentes ficam entre colchetes; nao sao inventados nomes, datas,
-valores ou protocolos. O relato de referencia e preservado separadamente
-das perguntas dos atalhos. Um rascunho factual pode ser gerado sem fundamento
-legal confirmado, mas nao deve afirmar ilegalidade ou citar normas nesse caso.
-
-O atalho de prazo distingue as regras pertinentes e seu marco inicial; o de
-PROCON separa orientacoes gerais de procedimentos locais nao verificados.
-Nao sao inventados canais, prazos de atendimento ou garantias de resultado.
-
-```powershell
-npm run build
-py -3.13 -m pip install httpx
-py -3.13 -m unittest discover -s tests -v
-```
-
-Os testes incluem a pergunta com erros de digitacao sobre taxa de desperdicio
-em restaurante, recuperacao dos artigos 39 e 51 no PDF real sem embeddings,
-perguntas de continuacao, esclarecimento, materias fora do escopo, citacoes
-invalidas e falhas do provedor. A geracao nos testes automatizados e simulada;
-eles nao comprovam a qualidade de todas as respostas reais do modelo.
-
-### Custo, Limites e Diagnostico
-
-#### Preparacao e Retomada do Indice
-
-```powershell
-py -3.13 -m backend.index_documents
-```
-
-O motor usa lotes de dois trechos por padrao (`EMBEDDING_BATCH_SIZE`, de 1 a 5),
-salva cada lote com substituicao atomica e valida modelo, corpus, dimensoes e
-normalizacao dos vetores. Se houver erro de cota, o comando termina com codigo
-1 e preserva o progresso. Execute novamente depois de liberar a cota; ele
-continua do lote pendente. Nao ha repeticao automatica infinita nem garantia
-de ultrapassar limites do provedor. Prefira preparar antes de iniciar a API.
-Para atualizar um servidor ja iniciado com indice parcial, reinicie-o apos a preparacao.
-
-#### Avaliacao e Revisao Juridica
-
-```powershell
-py -3.13 -m backend.evaluate --mode lexical
-py -3.13 -m backend.evaluate --mode live
-py -3.13 -m backend.evaluate --approved-only
-py -3.13 -m backend.evaluate --require-reviewed
-```
-
-`lexical` e offline. `live` consome a API e deve ser usado deliberadamente.
-Os 15 casos em `data/evaluation/cases.json` sao casos de desenvolvimento,
-incluindo exemplos sinteticos, ambiguidades, contexto e erros de digitacao.
-Todos comecam pendentes de revisao. Artigos candidatos e estados esperados
-NAO sao referencias juridicas aprovadas. A expansao offline usa consultas
-predefinidas, nao o planejamento real do LLM. Os relatorios ficam em
-`data/evaluation/reports/`, fora do Git.
-
-O processo e a rubrica de revisao estao em [docs/legal-review.md](docs/legal-review.md).
-E necessario um profissional qualificado para revisar, justificar e registrar
-a aprovacao. O software nao autentica credenciais nem substitui essa revisao.
-
-#### Progresso, Fontes e Privacidade
-
-O chat usa `POST /api/chat/stream` (NDJSON) com eventos de etapas reais e
-resultado ou erro terminal. `POST /api/chat` permanece disponivel sem streaming.
-O botao de nova tentativa reutiliza o relato e nao duplica a pergunta.
-As referencias ficam em uma secao independente e recolhida, **Fontes utilizadas**,
-em cada resposta. Ela reune artigos, paginas, citacao literal e, quando informado,
-o modo de busca. As paginas abrem `/api/sources/cdc.pdf#page=N`, com a edicao da fonte.
-O navegador pode baixar o PDF se nao tiver visualizador integrado.
-
-O chat exibe um aviso discreto sobre o envio de relatos e anexos ao Google,
-sem checkbox ou bloqueio de envio. O frontend informa `X-Privacy-Notice: displayed`
-nas chamadas POST. Esse cabecalho indica exibicao de aviso, NAO consentimento
-juridico nem autenticacao. `X-Data-Consent: accepted` continua aceito por
-compatibilidade com clientes anteriores. Nao envie dados sensiveis. O backend
-nao persiste relatos ou anexos, mas o navegador salva o historico e o provedor
-de IA pode manter os dados segundo sua politica. O ditado pode usar um servico
-de voz do navegador. Apagar o historico remove os dados locais, nao os ja
-enviados ao provedor. A interface nao registra consentimento explicito; avalie a
-base legal e os requisitos de privacidade antes de publicar o servico.
-
-Requisicoes POST aceitam apenas origens configuradas em `ALLOWED_ORIGINS`,
-exigem `Content-Length` e limitam o corpo a 256 KiB no chat e 5 MiB no anexo.
-O limite e de 12 envios/minuto por cliente e duas consultas simultaneas por
-processo. As contagens de clientes ficam somente em memoria. Nao ha controle
-distribuido entre processos; atras de proxy, configure corretamente o IP de
-origem para evitar agrupar todos os usuarios. Para publicar, ainda sao
-necessarios HTTPS, autenticacao quando aplicavel, gateway com limites
-distribuidos e analise de privacidade/seguranca. A interface Streamlit e o
-notebook continuam experimentais e nao devem ser expostos como servico publico.
-
-Interromper a conexao ou exceder o tempo de espera da interface nao cancela
-necessariamente uma chamada ja enviada ao Google. Uma tentativa manual pode
-gerar consumo adicional; nao ha repeticao automatica de consultas pagas.
-
-#### Metricas Locais
-
-```powershell
-py -3.13 -m backend.telemetry
-```
-
-O SQLite em `data/cache/metrics.sqlite3` armazena identificador aleatorio,
-data, modelo, estado, duracao total/por etapa, tentativas, tokens informados
-e uso de fallback. Nao grava perguntas, respostas, anexos, IPs nem chaves.
-Registros com mais de 30 dias sao eliminados quando chegam novas metricas.
-O resumo considera as ultimas mil consultas. O banco e local, sem endpoint
-publico de metricas. Os logs de acesso do servidor podem registrar IPs e
-precisam de politica de retencao propria na implantacao.
-
-Configure os precos efetivos em `GENERATION_INPUT_USD_PER_MILLION` e
-`GENERATION_OUTPUT_USD_PER_MILLION` para estimar custo de geracao. Sem precos
-ou metadados completos, o custo fica desconhecido, nao zero. A estimativa nao
-inclui embeddings, impostos, descontos de cache nem outras regras comerciais;
-nao substitui o faturamento do provedor.
-
-Uma consulta completa usa tres chamadas de geracao: planejamento da busca,
-selecao dos trechos e resposta. Esclarecimentos e perguntas fora do escopo
-podem encerrar antes. As buscas hibridas tambem usam embeddings de consulta
-quando o indice vetorial esta disponivel. Esse fluxo pode aumentar latencia
-e consumo em relacao a uma unica chamada de resposta.
-
-Se a cota de embeddings for excedida ou a indexacao falhar, o motor registra
-um aviso e utiliza BM25. Nao confunda esse modo lexical com busca semantica
-ativa. Verifique a cota do provedor se aparecer `429 RESOURCE_EXHAUSTED`.
-Falhas nas etapas de geracao sao exibidas como erro tecnico. Os logs do novo
-fluxo registram quantidades de candidatos e trechos, sem registrar o relato.
-
-Interpretacao de regras gerais nao equivale a parecer juridico nem comprova
-que uma pratica e permitida ou proibida. O modelo deve explicitar limites;
-aviso previo de uma taxa nao e tratado como prova suficiente de validade.
-
-## Interface Anterior (Streamlit)
-
-1. **Instalação das Dependências:**
-   ```bash
-   pip install -r backend/requirements.txt
-   ```
-
-2. **Configuração Nativa da Chave da API:**
-   Crie ou edite o arquivo `.env` na raiz do projeto:
+2. Configure `GEMINI_API_KEY` in a `.env` file at the project root:
    ```env
-   GEMINI_API_KEY=sua_chave_aqui
+   GEMINI_API_KEY=your_gemini_api_key_here
+   GEMINI_MODEL=gemini-2.5-flash
    ```
-   *(Ou configure via variável de ambiente do sistema `$env:GEMINI_API_KEY="sua_chave"`)*
+   The API key remains securely on the server and is never exposed to the frontend.
 
-3. **Inicialização do Servidor Streamlit:**
+3. Compile the frontend and start the unified server:
    ```bash
-   streamlit run legacy/streamlit_app.py
+   npm run build
+   python -m uvicorn backend.api:app --host 127.0.0.1 --port 8000
    ```
 
-4. **Uso da Interface:**
-   - O documento oficial em `data/documents/codigo_defesa_consumidor.pdf` e a chave da raiz são carregados nativamente na inicialização.
-   - Não há formulários manuais de upload nem campos para colar chaves.
-   - Utilize a área de chat para enviar dúvidas em linguagem natural ou acione os botões de **Casos de Teste Padronizados** para conferência imediata.
-   - Analise os dispositivos legais e páginas citadas, além do painel de auditoria com os scores de similaridade de cada trecho normativo.
+4. Open your browser at **http://127.0.0.1:8000**.
+
+For development with hot-reload, run the backend on port 8000 and run `npm run dev` in a separate terminal. Vite will proxy all `/api` requests to the FastAPI backend.
 
 ---
 
-## Como Executar no Google Colab
+## Architecture Details
 
-1. **Upload no Colab:**
-   - Acesse [colab.research.google.com](https://colab.research.google.com).
-   - Envie o arquivo `notebooks/chat_com_pdf_rag.ipynb` e o documento `data/documents/codigo_defesa_consumidor.pdf` para a pasta atual do Colab.
-   - Localmente, o notebook encontra o PDF em `data/documents/` e o `.env` na raiz, mesmo quando iniciado pela pasta `notebooks/`.
-2. **Configuração de Segredos:**
-   - No Colab, clique no ícone de chave (**Secrets**) na barra lateral esquerda.
-   - Adicione `GEMINI_API_KEY` com o valor da chave obtida no [Google AI Studio](https://aistudio.google.com/app/apikey) e habilite o acesso para o notebook.
-3. **Execução:**
-   - Execute as células de 1 a 7 sequencialmente. O documento e a chave serão identificados nativamente, sem telas de upload interativo.
+### Dual Response Sections
+
+Every grounded legal answer is generated with two synchronized perspectives within a single inference call:
+
+- **In Plain Words:** An accessible, conversational explanation designed for non-lawyers, using clear language and identifying a concrete, practical next step. Displayed directly in the main message stream.
+- **Detailed Legal Analysis:** Comprehensive statutory foundations, specific legal conditions, exceptions, article citations, and literal statutory extracts. Presented in an expandable section directly beneath the plain-language summary.
+
+The model is explicitly instructed to maintain identical legal conclusions and uncertainty margins across both versions, preserving essential caveats. Clarification requests and out-of-scope notices use a concise single-block response.
+
+### Shortcut Actions
+
+The interface features guided action shortcuts:
+- **Formal Complaint (`reclamacao`):** Generates a ready-to-use, first-person demand letter (`complaint_text`) complete with placeholders (e.g., `[Insert Invoice Number]`), separated from explanatory advice. Includes a dedicated **Copy Complaint** button.
+- **Deadlines (`prazo`):** Identifies statutory time limits (e.g., Art. 26 notice periods, Art. 18 repair windows) and specifies their legal trigger events.
+- **PROCON Guidance (`procon`):** Clarifies consumer protection agency workflows, distinguishing standard statutory protocol from administrative specifics.
+
+### Evaluation and Automated Testing
+
+Run the automated test suite locally:
+
+```bash
+npm run build
+python -m pip install httpx pytest
+python -m unittest discover -s tests -v
+```
+
+Tests evaluate misspelled legal queries, extraction of Articles 39 and 51 from the official PDF, follow-up conversation turns, clarification triggers, out-of-scope rejections, citation accuracy, and provider fallback behavior.
 
 ---
 
-## Casos de Teste Mapeados
+## Deployment Options
 
-1. **Teste 1 (Vício do produto / Prazo de 30 dias):**
-   - Pergunta: TV com defeito deixada há mais de 30 dias na assistência técnica.
-   - Resposta esperada: Art. 18, § 1º (troca, restituição do valor pago ou abatimento do preço), citando a **Página 16**.
-2. **Teste 2 (Direito de arrependimento):**
-   - Pergunta: Devolução de compra realizada pela internet dentro do prazo legal.
-   - Resposta esperada: Art. 49 (direito de arrependimento em até 7 dias com devolução integral e atualizada), citando a **Página 29**.
-3. **Teste 3 (Cobrança indevida em dobro):**
-   - Pergunta: Fatura com cobrança indevida já quitada pelo consumidor.
-   - Resposta esperada: Art. 42, parágrafo único (repetição do indébito em dobro corrigido monetariamente), citando a **Página 26**.
-4. **Teste 4 (Fora do escopo / Negativa):**
-   - Pergunta: Dúvida sobre rescisão trabalhista sob a CLT.
-   - Resposta esperada: `"Não encontrei essa informação no documento."`
+### Docker Deployment (Render, Cloud Run, Hugging Face Spaces)
+
+The project includes a multi-stage [Dockerfile](Dockerfile) that builds the frontend assets with Node 20 and packages the backend with Python 3.12-slim:
+
+```bash
+# Build the Docker container locally
+docker build -t consumiai .
+
+# Run the container
+docker run -p 7860:7860 -e GEMINI_API_KEY="your_api_key" consumiai
+```
+
+- **Hugging Face Spaces:** Set SDK to `docker` and configure `GEMINI_API_KEY` under Space Secrets. The application runs on port 7860 as an unprivileged user (UID 1000).
+- **Render.com:** Deploy as a **Web Service** with the **Docker** runtime. Set the `GEMINI_API_KEY` environment variable in the Render dashboard.
+- **Google Cloud Run:** Deploy using `gcloud run deploy consumiai --source . --region southamerica-east1 --memory 2Gi --timeout 300 --allow-unauthenticated`.
+
+---
+
+## Legacy Interfaces and Notebooks
+
+### Streamlit Interface (Prototype)
+
+To run the exploratory Streamlit interface:
+```bash
+streamlit run legacy/streamlit_app.py
+```
+
+### Google Colab Notebook
+
+1. Open [colab.research.google.com](https://colab.research.google.com).
+2. Upload `notebooks/chat_com_pdf_rag.ipynb` and `data/documents/codigo_defesa_consumidor.pdf`.
+3. Add `GEMINI_API_KEY` to Colab Secrets.
+4. Execute cells 1 through 7 sequentially.
+
+---
+
+## Reference Benchmark Cases
+
+1. **Product Defect / 30-Day Cure Period:**
+   - Query: Defective television left at authorized service center for more than 30 days.
+   - Grounded Response: Art. 18, § 1 (product exchange, full refund, or proportional price abatement).
+2. **Right of Regret (Distance Purchases):**
+   - Query: Return of an online purchase within the statutory window.
+   - Grounded Response: Art. 49 (7-day right of withdrawal with full monetary refund).
+3. **Double Restitution for Improper Billing:**
+   - Query: Consumer pays an incorrect, unwarranted charge on an invoice.
+   - Grounded Response: Art. 42, sole paragraph (repetition of undue payment in double).
+4. **Out of Scope Inquiry:**
+   - Query: Employment contract termination under labor law (CLT).
+   - Expected Response: Clear notification stating the matter is outside the Consumer Defense Code.
