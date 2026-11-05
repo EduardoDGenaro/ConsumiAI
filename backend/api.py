@@ -116,7 +116,7 @@ def status() -> dict:
 def execute_query(payload: ChatRequest, notify=None):
     if not payload.question.strip():
         raise HTTPException(422, "Digite uma pergunta antes de enviar.")
-    model = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
+    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
     trace = ConsultaTrace(model=model, notify=notify)
     token = CURRENT_TRACE.set(trace)
     result_status = "erro_tecnico"
@@ -163,7 +163,7 @@ def query_result(payload: ChatRequest, notify=None):
     except HTTPException:
         raise
     except ErroConsultaCDC as error:
-        logger.error("Falha tecnica na consulta CDC: %s", error)
+        logger.exception("Falha tecnica na consulta CDC: %s", error)
         return {
             "status": "erro_tecnico",
             "detail": "Ocorreu uma falha tecnica ao consultar o modelo. Isso nao indica falta de fundamento no CDC. Tente novamente em instantes.",
