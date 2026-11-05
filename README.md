@@ -1,13 +1,3 @@
----
-title: ConsumiAI
-colorFrom: blue
-colorTo: indigo
-sdk: docker
-app_port: 7860
-pinned: false
-license: mit
----
-
 # Consumer Defense Code (CDC) RAG Assistant - ConsumiAI
 
 This repository contains the project scope and executable application designed to act as an intelligent consumer rights consultant, answering real inquiries grounded in Brazilian Federal Law 8,078/1990 and complementary regulatory decrees (official PROCON-SP 2025 edition).
