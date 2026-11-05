@@ -166,11 +166,11 @@ def query_result(payload: ChatRequest, notify=None):
         logger.exception("Falha tecnica na consulta CDC: %s", error)
         return {
             "status": "erro_tecnico",
-            "detail": "Ocorreu uma falha tecnica ao consultar o modelo. Isso nao indica falta de fundamento no CDC. Tente novamente em instantes.",
+            "detail": f"Falha tecnica: {error}",
         }, 502
-    except Exception:
-        logger.error("Falha tecnica nao classificada na consulta ao CDC")
-        return {"status": "erro_tecnico", "detail": "Nao foi possivel consultar o assistente. Tente novamente."}, 502
+    except Exception as error:
+        logger.exception("Falha tecnica nao classificada na consulta ao CDC: %s", error)
+        return {"status": "erro_tecnico", "detail": f"Erro interno: {error}"}, 502
 
 
 @app.post("/api/chat")
@@ -198,8 +198,9 @@ async def chat_stream(payload: ChatRequest):
             events.put({"type": "result" if code == 200 else "error", "data": result})
         except HTTPException as error:
             events.put({"type": "error", "data": {"detail": error.detail}})
-        except Exception:
-            events.put({"type": "error", "data": {"detail": "Falha ao preparar a consulta."}})
+        except Exception as error:
+            logger.exception("Falha na thread do stream: %s", error)
+            events.put({"type": "error", "data": {"detail": f"Falha ao preparar a consulta: {error}"}})
         finally:
             _SLOTS.release()
 

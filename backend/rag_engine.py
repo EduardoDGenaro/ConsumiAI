@@ -493,7 +493,8 @@ def _gerar_estruturado(client, modelo: str, prompt: str, schema: type[ModeloEstr
         if result.text:
             return schema.model_validate_json(result.text)
     except Exception as error:
-        raise ErroConsultaCDC(f"Falha na etapa {schema.__name__} da consulta.") from error
+        logger.exception("Erro em _gerar_estruturado na etapa %s: %s", schema.__name__, error)
+        raise ErroConsultaCDC(f"Falha na etapa {schema.__name__}: {error}") from error
     raise ErroConsultaCDC(f"Saida invalida na etapa {schema.__name__} da consulta.")
 
 
@@ -594,7 +595,7 @@ def consultar_cdc(
     pergunta: str,
     indice: IndiceHibridoCDC,
     client_genai,
-    model_name: str = "gemini-3.5-flash-lite",
+    model_name: str = "gemini-2.5-flash",
     historico_conversa: list[dict[str, str]] | None = None,
     acao: Literal["orientacao", "reclamacao", "prazo", "procon"] = "orientacao",
     contexto_caso: str = "",
