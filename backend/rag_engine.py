@@ -477,14 +477,14 @@ def formatar_resposta_estruturada(dados: RespostaJuridicaCDC) -> str:
 def _gerar_estruturado(client, modelo: str, prompt: str, schema: type[ModeloEstruturado]) -> ModeloEstruturado:
     stage = {"PlanoConsultaCDC": "understanding", "SelecaoTrechosCDC": "selecting", "RespostaJuridicaCDC": "preparing"}[schema.__name__]
     modelos_candidatos = [modelo]
-    for fallback in ("gemini-2.0-flash", "gemini-1.5-flash"):
+    for fallback in ("gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.8-flash"):
         if fallback not in modelos_candidatos:
             modelos_candidatos.append(fallback)
 
     ultimo_erro = None
     with medir_etapa(stage):
-        for mod in modelos_candidatos:
-            for tentativa in range(3):
+        for rodada in range(2):
+            for mod in modelos_candidatos:
                 try:
                     registrar_tentativa()
                     result = client.models.generate_content(
@@ -504,21 +504,23 @@ def _gerar_estruturado(client, modelo: str, prompt: str, schema: type[ModeloEstr
                 except Exception as error:
                     ultimo_erro = error
                     erro_str = str(error)
-                    transiente = "503" in erro_str or "UNAVAILABLE" in erro_str or "high demand" in erro_str or "429" in erro_str
-                    if transiente and tentativa < 2:
-                        delay = (tentativa + 1) * 2
-                        logger.warning("Modelo %s ocupado (tentativa %d/3). Aguardando %ds...", mod, tentativa + 1, delay)
-                        time.sleep(delay)
+                    transiente = any(
+                        token in erro_str
+                        for token in ("503", "504", "429", "500", "UNAVAILABLE", "DEADLINE_EXCEEDED", "RESOURCE_EXHAUSTED", "high demand", "overloaded")
+                    )
+                    if transiente:
+                        logger.warning("Modelo %s indisponivel/lento na etapa %s (rodada %d): %s. Alternando modelo...", mod, schema.__name__, rodada + 1, erro_str[:120])
+                        time.sleep(0.8 * (rodada + 1))
                         continue
-                    if transiente and mod != modelos_candidatos[-1]:
-                        logger.warning("Modelo %s indisponivel apos retentativas. Tentando proximo modelo de fallback...", mod)
-                        break
-                    if not transiente:
-                        logger.exception("Erro em _gerar_estruturado na etapa %s com modelo %s: %s", schema.__name__, mod, error)
-                        raise ErroConsultaCDC(f"Falha na etapa {schema.__name__}: {error}") from error
+                    logger.exception("Erro em _gerar_estruturado na etapa %s com modelo %s: %s", schema.__name__, mod, error)
+                    raise ErroConsultaCDC(f"Falha na etapa {schema.__name__}: {error}") from error
+            if ultimo_erro is None:
+                break
 
-    logger.exception("Esgotadas tentativas em _gerar_estruturado na etapa %s: %s", schema.__name__, ultimo_erro)
-    raise ErroConsultaCDC(f"Falha na etapa {schema.__name__}: {ultimo_erro}") from ultimo_erro
+    if ultimo_erro is not None:
+        logger.exception("Esgotadas tentativas em _gerar_estruturado na etapa %s: %s", schema.__name__, ultimo_erro)
+        raise ErroConsultaCDC(f"Falha na etapa {schema.__name__}: {ultimo_erro}") from ultimo_erro
+    raise ErroConsultaCDC(f"Saida invalida na etapa {schema.__name__} da consulta.")
 
 
 def _planejar_consulta(pergunta: str, historico: list[dict[str, str]], client, modelo: str, contexto_caso: str = "") -> PlanoConsultaCDC:
@@ -618,7 +620,7 @@ def consultar_cdc(
     pergunta: str,
     indice: IndiceHibridoCDC,
     client_genai,
-    model_name: str = "gemini-3.8-flash",
+    model_name: str = "gemini-3.1-flash-lite",
     historico_conversa: list[dict[str, str]] | None = None,
     acao: Literal["orientacao", "reclamacao", "prazo", "procon"] = "orientacao",
     contexto_caso: str = "",

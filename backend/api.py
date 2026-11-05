@@ -96,7 +96,7 @@ def get_engine() -> tuple[genai.Client, IndiceHibridoCDC]:
         raise HTTPException(503, "O PDF oficial do CDC nao foi encontrado no servidor.")
     with _ENGINE_LOCK:
         if _ENGINE is None:
-            client = genai.Client(api_key=key, http_options=types.HttpOptions(timeout=60000))
+            client = genai.Client(api_key=key, http_options=types.HttpOptions(timeout=20000))
             _ENGINE = client, IndiceHibridoCDC(extrair_chunks_cdc(str(PDF_PATH)), client)
     return _ENGINE
 
@@ -116,7 +116,11 @@ def status() -> dict:
 def execute_query(payload: ChatRequest, notify=None):
     if not payload.question.strip():
         raise HTTPException(422, "Digite uma pergunta antes de enviar.")
-    model = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
+    raw_model = os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite").strip()
+    if not raw_model or raw_model.startswith(("gemini-1.", "gemini-2.")) or raw_model == "gemini-3.8-flash":
+        model = "gemini-3.1-flash-lite"
+    else:
+        model = raw_model
     trace = ConsultaTrace(model=model, notify=notify)
     token = CURRENT_TRACE.set(trace)
     result_status = "erro_tecnico"

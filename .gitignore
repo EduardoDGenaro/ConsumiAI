@@ -2,6 +2,7 @@ node_modules/
 dist/
 data/cache/*
 !data/cache/.gitkeep
+!data/cache/cache_embeddings_cdc_*.json
 data/evaluation/reports/
 __pycache__/
 *.pyc
@@ -12,4 +13,3 @@ __pycache__/
 .streamlit/secrets.toml
 .ipynb_checkpoints/
 *.log
-cache_embeddings_cdc_*.json
