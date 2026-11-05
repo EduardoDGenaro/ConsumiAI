@@ -76,7 +76,7 @@ The primary interface is built with React 19, TypeScript, Tailwind CSS, and Luci
 2. Configure `GEMINI_API_KEY` in a `.env` file at the project root:
    ```env
    GEMINI_API_KEY=your_gemini_api_key_here
-   GEMINI_MODEL=gemini-2.5-flash
+   GEMINI_MODEL=gemini-3.8-flash
    ```
    The API key remains securely on the server and is never exposed to the frontend.
 

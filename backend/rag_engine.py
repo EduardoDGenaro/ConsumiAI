@@ -595,7 +595,7 @@ def consultar_cdc(
     pergunta: str,
     indice: IndiceHibridoCDC,
     client_genai,
-    model_name: str = "gemini-2.5-flash",
+    model_name: str = "gemini-3.8-flash",
     historico_conversa: list[dict[str, str]] | None = None,
     acao: Literal["orientacao", "reclamacao", "prazo", "procon"] = "orientacao",
     contexto_caso: str = "",

@@ -116,7 +116,7 @@ def status() -> dict:
 def execute_query(payload: ChatRequest, notify=None):
     if not payload.question.strip():
         raise HTTPException(422, "Digite uma pergunta antes de enviar.")
-    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+    model = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
     trace = ConsultaTrace(model=model, notify=notify)
     token = CURRENT_TRACE.set(trace)
     result_status = "erro_tecnico"
