@@ -11,6 +11,7 @@ import logging
 import os
 import re
 import threading
+import time
 import unicodedata
 from typing import Any, Literal, TypeVar
 
@@ -474,28 +475,50 @@ def formatar_resposta_estruturada(dados: RespostaJuridicaCDC) -> str:
 
 
 def _gerar_estruturado(client, modelo: str, prompt: str, schema: type[ModeloEstruturado]) -> ModeloEstruturado:
-    try:
-        stage = {"PlanoConsultaCDC": "understanding", "SelecaoTrechosCDC": "selecting", "RespostaJuridicaCDC": "preparing"}[schema.__name__]
-        with medir_etapa(stage):
-            registrar_tentativa()
-            result = client.models.generate_content(
-                model=modelo,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=schema,
-                    temperature=0.0,
-                ),
-            )
-            registrar_uso(result)
-        if isinstance(result.parsed, schema):
-            return result.parsed
-        if result.text:
-            return schema.model_validate_json(result.text)
-    except Exception as error:
-        logger.exception("Erro em _gerar_estruturado na etapa %s: %s", schema.__name__, error)
-        raise ErroConsultaCDC(f"Falha na etapa {schema.__name__}: {error}") from error
-    raise ErroConsultaCDC(f"Saida invalida na etapa {schema.__name__} da consulta.")
+    stage = {"PlanoConsultaCDC": "understanding", "SelecaoTrechosCDC": "selecting", "RespostaJuridicaCDC": "preparing"}[schema.__name__]
+    modelos_candidatos = [modelo]
+    for fallback in ("gemini-2.0-flash", "gemini-1.5-flash"):
+        if fallback not in modelos_candidatos:
+            modelos_candidatos.append(fallback)
+
+    ultimo_erro = None
+    with medir_etapa(stage):
+        for mod in modelos_candidatos:
+            for tentativa in range(3):
+                try:
+                    registrar_tentativa()
+                    result = client.models.generate_content(
+                        model=mod,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json",
+                            response_schema=schema,
+                            temperature=0.0,
+                        ),
+                    )
+                    registrar_uso(result)
+                    if isinstance(result.parsed, schema):
+                        return result.parsed
+                    if result.text:
+                        return schema.model_validate_json(result.text)
+                except Exception as error:
+                    ultimo_erro = error
+                    erro_str = str(error)
+                    transiente = "503" in erro_str or "UNAVAILABLE" in erro_str or "high demand" in erro_str or "429" in erro_str
+                    if transiente and tentativa < 2:
+                        delay = (tentativa + 1) * 2
+                        logger.warning("Modelo %s ocupado (tentativa %d/3). Aguardando %ds...", mod, tentativa + 1, delay)
+                        time.sleep(delay)
+                        continue
+                    if transiente and mod != modelos_candidatos[-1]:
+                        logger.warning("Modelo %s indisponivel apos retentativas. Tentando proximo modelo de fallback...", mod)
+                        break
+                    if not transiente:
+                        logger.exception("Erro em _gerar_estruturado na etapa %s com modelo %s: %s", schema.__name__, mod, error)
+                        raise ErroConsultaCDC(f"Falha na etapa {schema.__name__}: {error}") from error
+
+    logger.exception("Esgotadas tentativas em _gerar_estruturado na etapa %s: %s", schema.__name__, ultimo_erro)
+    raise ErroConsultaCDC(f"Falha na etapa {schema.__name__}: {ultimo_erro}") from ultimo_erro
 
 
 def _planejar_consulta(pergunta: str, historico: list[dict[str, str]], client, modelo: str, contexto_caso: str = "") -> PlanoConsultaCDC:
