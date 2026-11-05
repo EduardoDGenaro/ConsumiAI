@@ -51,8 +51,11 @@ async def protect_requests(request: Request, call_next):
         if request.headers.get("X-Privacy-Notice") != "displayed" and request.headers.get("X-Data-Consent") != "accepted":
             return JSONResponse(status_code=403, content={"detail": "O aviso de privacidade deve estar disponivel antes do envio."})
         origins = set(os.environ.get("ALLOWED_ORIGINS", "http://127.0.0.1:8000,http://localhost:8000,http://127.0.0.1:5173,http://localhost:5173,http://testserver").split(","))
-        if request.headers.get("origin") and request.headers["origin"] not in origins:
-            return JSONResponse(status_code=403, content={"detail": "Origem nao autorizada."})
+        req_origin = request.headers.get("origin")
+        if req_origin and "*" not in origins and req_origin not in origins:
+            host_header = request.headers.get("host")
+            if not (host_header and req_origin.endswith(host_header)):
+                return JSONResponse(status_code=403, content={"detail": "Origem nao autorizada."})
         try:
             length = int(request.headers.get("content-length", "-1"))
         except ValueError:

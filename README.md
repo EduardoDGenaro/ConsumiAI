@@ -1,3 +1,13 @@
+---
+title: ConsumiAI
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+license: mit
+---
+
 # Assistente RAG do Código de Defesa do Consumidor (CDC)
 
 Este repositório contém o escopo do projeto e o notebook Jupyter executável projetado para atuar como um consultor inteligente de direitos do consumidor, respondendo a dúvidas reais com base na Lei 8.078/1990 e decretos complementares (edição oficial PROCON-SP 2025).
